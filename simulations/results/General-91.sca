@@ -1,0 +1,35 @@
+version 2
+run General-91-20190108-16:36:51-13636
+attr configname General
+attr datetime 20190108-16:36:51
+attr experiment General
+attr inifile omnetpp.ini
+attr iterationvars $slotsPerFrame=1840
+attr iterationvars2 "$slotsPerFrame=1840, $repetition=0"
+attr measurement $slotsPerFrame=1840
+attr network Ipnet
+attr processid 13636
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 91
+attr seedset 91
+attr slotsPerFrame 1840
+
+scalar . 	slotsPerFrame 	1840
+scalar Ipnet.satGateway.satGatewayPhy 	delay:mean 	nan
+attr source  delay
+attr title  "delay, mean"
+scalar Ipnet.satGateway.satGatewayPhy 	delay:sum 	0
+attr source  delay
+attr title  "delay, sum"
+statistic Ipnet.satGateway.satGatewayPhy 	delay:stats
+field count 0
+field mean nan
+field stddev nan
+field sum 0
+field sqrsum 0
+field min nan
+field max nan
+attr source  delay
+attr title  "delay, stats"

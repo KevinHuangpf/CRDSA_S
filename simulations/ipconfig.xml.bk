@@ -1,0 +1,3 @@
+<config>
+	<interface hosts="**.user[*]" address="172.0.0.x" netmask="255.255.255.0"/>
+</config>
