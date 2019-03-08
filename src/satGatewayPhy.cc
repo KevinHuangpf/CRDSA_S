@@ -38,53 +38,115 @@ void SatGatewayPhy::initialize()
 
     totalNumberOfPacketsSend = 0;
     totalNumberOfPacketsReceived = 0;
+    delaySignal = registerSignal("delay");
 
     propagationDelay = par("propagationDelay");
     slotDuration = par("slotDuration");
     slotsPerFrame = par("slotsPerFrame");
     numberOfReplicas = par("numberOfReplicas");
 
-    isFrameTriggered = false;
+    //mPacketBufferAll.reserve(100000);
 
+    isFrameTriggered = false;
+    isClear=false;
     mCRDSA = new CRDSA(numberOfReplicas, slotsPerFrame);
 }
 
+
 void SatGatewayPhy::handleMessage(cMessage *msg)
 {
+
+    std::ofstream outputFile;
+    outputFile.open("SimulationResults", std::ios::out | std::ios::app);
     // Get incoming packet and forward
     cPacket* incomingFrame = (cPacket*) msg;
 
-    // frameTrigger
+    SatFrameRtn* msgtemp = (SatFrameRtn*)incomingFrame;
+
     if(msg->isSelfMessage())
     {
-        // The previous frame is analysed and packets that do not interfere are send
-        std::vector<SatFrameRtn*> retrievedPackets = retrievePackets();
-        retrievePacketsTime = simTime();
+        if(strcmp(msg->getName(),"frameTrigger")==0){
 
-        while(retrievedPackets.size() > 0)
-        {
-            delaySum = delaySum + retrievePacketsTime - retrievedPackets[0]->getSendingTime();
+            std::vector<SatFrameRtn*> retrievedPackets = retrievePackets();
 
-            send(retrievedPackets[0]->decapsulate(), "localOut");
-            delete retrievedPackets[0];
-            retrievedPackets.erase(retrievedPackets.begin());
+            retrievePacketsTime = simTime();
 
-            totalNumberOfPacketsReceived++;
+
+            while(retrievedPackets.size() > 0)
+            {
+
+                delaySum = delaySum + retrievePacketsTime - retrievedPackets[0]->getSendingTime();
+
+
+                send(retrievedPackets[0]->decapsulate(), "localOut");
+
+                delete retrievedPackets[0];
+                retrievedPackets.erase(retrievedPackets.begin());
+                totalNumberOfPacketsReceived++;
+
+            }
+
+            isFrameTriggered = false;
+            delete msg;
         }
-        isFrameTriggered = false;
-        delete msg;
+
+        if(strcmp(msg->getName(),"mPacketBufferAllClear")==0){
+            mPacketBuffer.clear();
+            retrievedPacketsAll.clear();
+            isClear = false;
+
+        }
+
+
     }
     // Return link
     else if(incomingFrame->getArrivalGateId() == remoteInGateId)
     {
-        int creationFrame = incomingFrame->getCreationTime().dbl()/(slotDuration*slotsPerFrame)+0.0001; // TODO: refactor
+
+        simtime_t creationFrame = incomingFrame->getArrivalTime(); // TODO: refactor
+
         if(!isFrameTriggered)
         {
-            scheduleAt((creationFrame+1)*slotDuration*slotsPerFrame+propagationDelay-0.0001, new cMessage("frameTrigger"));
+            scheduleAt(creationFrame+slotDuration*0.99, new cMessage("frameTrigger"));
+
             isFrameTriggered = true;
         }
-        mPacketBuffer.push_back((SatFrameRtn*)incomingFrame);
+
+
+        int clear = incomingFrame->getCreationTime().dbl()/(slotDuration*slotsPerFrame)+0.0001; // TODO: refactor
+        if(!isClear)
+        {
+            scheduleAt((clear+1)*slotDuration*slotsPerFrame+propagationDelay-0.0001, new cMessage("mPacketBufferAllClear"));
+            isClear = true;
+        }
+
+
+
+        if(retrievedPacketsAll.size()==0){
+             mPacketBuffer.push_back((SatFrameRtn*)incomingFrame);
+         }else{
+             bool isExisted = false;
+
+             for(unsigned int i=0; i<retrievedPacketsAll.size();i++){
+
+                 int currentSrcAddressTemp = retrievedPacketsAll[i]->getSrcAddress();
+                 int currentRandomSeedTemp = retrievedPacketsAll[i]->getRandomSeed();
+                 if(currentSrcAddressTemp == msgtemp->getSrcAddress() && currentRandomSeedTemp == msgtemp->getRandomSeed()){
+                     isExisted=true;
+                     break;
+                 }
+
+             }
+
+
+             if(!isExisted){
+                 mPacketBuffer.push_back((SatFrameRtn*)incomingFrame);
+             }
+         }
+
+
         totalNumberOfPacketsSend++;
+
     }
     else
     {
@@ -92,33 +154,53 @@ void SatGatewayPhy::handleMessage(cMessage *msg)
         satFrameFwd *incomingL2Frame = (satFrameFwd *) incomingFrame;
         sendDirect(incomingL2Frame->decapsulate(), propagationDelay, 0, satTerminalModule[incomingL2Frame->getDestL2Address()], "satchannelforward");
         delete incomingL2Frame;
+
     }
+
+    outputFile.close();
 }
+
+
 
 void SatGatewayPhy::finish()
 {
+
+    std::ofstream outputFile;
+    outputFile.open("SimulationResults", std::ios::out | std::ios::app);
+
     for(unsigned int i = 0; i < mPacketBuffer.size(); i++)
     {
         delete mPacketBuffer[i];
         totalNumberOfPacketsReceived--;
+        outputFile << "totalNumberOfPacketsReceived--"<<  std::endl;
     }
+
+
     double slot = simTime().dbl()/slotDuration;
     double G = (totalNumberOfPacketsSend / slot) / numberOfReplicas;
     double S = totalNumberOfPacketsReceived / slot;
     delayAvg = delaySum/totalNumberOfPacketsReceived ;
-    std::ofstream outputFile;
-    outputFile.open("SimulationResults", std::ios::out | std::ios::app);
+
+
+
     outputFile << numberOfReplicas << "\t";
+
     std::cout << "G = " << G << std::endl;
     outputFile << G << "\t";
+
     std::cout << "S = " << S << std::endl;
     outputFile << S << "\t";
+
     std::cout << "loss ratio = " << 1-S/G << std::endl;
-    outputFile << 1-S/G <<  "\t";
+    outputFile << 1-S/G << "\t";
 
     std::cout << "delayAvg = " << delayAvg << std::endl;
-    outputFile << delayAvg <<  "\t";
+    outputFile << delayAvg << "\t";
 
+/*
+    std::cout << "count = " << count << std::endl;
+    outputFile << count << "\t";
+*/
 
     std::cout << "totalNumberOfPacketsSend = " << totalNumberOfPacketsSend << std::endl;
     outputFile << totalNumberOfPacketsSend << "\t";
@@ -131,6 +213,8 @@ void SatGatewayPhy::finish()
 
 std::vector<SatFrameRtn*> SatGatewayPhy::retrievePackets()
 {
+    std::ofstream outputFile;
+    outputFile.open("SimulationResults", std::ios::out | std::ios::app);
     std::vector<SatFrameRtn*> retrievedPackets;
     while(mPacketBuffer.size() > 0)
     {
@@ -153,18 +237,30 @@ std::vector<SatFrameRtn*> SatGatewayPhy::retrievePackets()
                 foundSinglePacket = true;
                 break;
             }
+
         }
         if(!foundSinglePacket)
         {
-            for(unsigned int j = 0; j < mPacketBuffer.size(); j++)
-                delete mPacketBuffer[j];
-            mPacketBuffer.clear();
+/*            for(unsigned int j = 0; j < mPacketBuffer.size(); j++)
+            delete mPacketBuffer[j];*/
+            //mPacketBuffer.clear();
             return retrievedPackets;
         }
         int currentSrcAddress = mPacketBuffer[i]->getSrcAddress();
         int currentRandomSeed = mPacketBuffer[i]->getRandomSeed();
-        retrievedPackets.push_back(mPacketBuffer[i]);
+
+        SatFrameRtn* p1= new SatFrameRtn;
+        SatFrameRtn* p2= new SatFrameRtn ;
+
+        *p1 = *mPacketBuffer[i];
+        *p2 = *mPacketBuffer[i];
+
+        retrievedPackets.push_back(p1);
+
+        retrievedPacketsAll.push_back(p2);
+
         mPacketBuffer.erase(mPacketBuffer.begin()+i);
+
         for(unsigned int j = 0; j < mPacketBuffer.size(); j++)
         {
             if(currentSrcAddress == mPacketBuffer[j]->getSrcAddress() && currentRandomSeed == mPacketBuffer[j]->getRandomSeed())
@@ -175,5 +271,6 @@ std::vector<SatFrameRtn*> SatGatewayPhy::retrievePackets()
             }
         }
     }
+    outputFile.close();
     return retrievedPackets;
 }
