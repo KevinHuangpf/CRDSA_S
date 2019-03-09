@@ -94,7 +94,7 @@ void SatGatewayPhy::handleMessage(cMessage *msg)
 
         if(!isFrameTriggered)
         {
-            scheduleAt(creationFrame+slotDuration*0.99, new cMessage("frameTrigger"));
+            scheduleAt(creationFrame+slotDuration*1, new cMessage("frameTrigger"));
             isFrameTriggered = true;
         }
 
